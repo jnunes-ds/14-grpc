@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/jnunes-ds/14-grpc/internal/database"
 	"github.com/jnunes-ds/14-grpc/internal/pb"
+	"io"
 )
 
 type CategoryService struct {
@@ -15,7 +16,7 @@ func NewCategoryService(db database.Category) *CategoryService {
 	return &CategoryService{CategoryDb: db}
 }
 
-func (c *CategoryService) CreateCategory(ctx context.Context, in *pb.CreateCategoryRequest) (*pb.Category, error) {
+func (c *CategoryService) CreateCategory(_ context.Context, in *pb.CreateCategoryRequest) (*pb.Category, error) {
 	category, err := c.CategoryDb.Create(in.Name, in.Description)
 	if err != nil {
 		return nil, err
@@ -48,7 +49,7 @@ func (c *CategoryService) ListCategories(context.Context, *pb.Blank) (*pb.Catego
 	return &pb.CategoryList{Categories: CategoryResponses}, nil
 }
 
-func (c *CategoryService) GetCategory(ctx context.Context, in *pb.CategoryGetRequest) (*pb.Category, error) {
+func (c *CategoryService) GetCategory(_ context.Context, in *pb.CategoryGetRequest) (*pb.Category, error) {
 	category, err := c.CategoryDb.Find(in.Id)
 	if err != nil {
 		return nil, err
@@ -61,4 +62,28 @@ func (c *CategoryService) GetCategory(ctx context.Context, in *pb.CategoryGetReq
 	}
 
 	return CategoryResponse, nil
+}
+
+func (c *CategoryService) CreateCategoryStream(stream pb.CategoryService_CreateCategoryStreamServer) error {
+	categories := &pb.CategoryList{}
+
+	for {
+		category, err := stream.Recv()
+		if err == io.EOF {
+			return stream.SendAndClose(categories)
+		}
+		if err != nil {
+			return err
+		}
+
+		categoryResult, err := c.CategoryDb.Create(category.Name, category.Description)
+		if err != nil {
+			return err
+		}
+		categories.Categories = append(categories.Categories, &pb.Category{
+			Id:          categoryResult.ID,
+			Name:        categoryResult.Name,
+			Description: categoryResult.Description,
+		})
+	}
 }
